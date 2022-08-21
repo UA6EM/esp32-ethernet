@@ -19,28 +19,39 @@ I found that this workaround behaved differently on the two tested scenarios:
  - When programming the ESP32 using the Arduino IDE I needed to manually stop the contact immediately after powering on or resetting the board for the connection to work. 
  - Using the ESPHome firmware this connection is not necessary at all.
 
-## Test code
+*
+   проверяется под ядром 2.0.1
 
-### Arduino IDE
+   This sketch shows how to configure different external
+   or internal clock sources for the Ethernet PHY
 
-```c
-/*
-    This sketch shows how to configure different external or internal clock sources for the Ethernet PHY
+   https://github.com/UA6EM/esp32-ethernet
+
 */
 
 #include <ETH.h>
+#include <ESPmDNS.h>
 
-/* 
-   * ETH_CLOCK_GPIO0_IN   - default: external clock from crystal oscillator
-   * ETH_CLOCK_GPIO0_OUT  - 50MHz clock from internal APLL output on GPIO0 - possibly an inverter is needed for LAN8720
-   * ETH_CLOCK_GPIO16_OUT - 50MHz clock from internal APLL output on GPIO16 - possibly an inverter is needed for LAN8720
-   * ETH_CLOCK_GPIO17_OUT - 50MHz clock from internal APLL inverted output on GPIO17 - tested with LAN8720
+/*
+     ETH_CLOCK_GPIO0_IN   - default: external clock from crystal oscillator
+     ETH_CLOCK_GPIO0_OUT  - 50MHz clock from internal APLL output on GPIO0 - possibly an inverter is needed for LAN8720
+     ETH_CLOCK_GPIO16_OUT - 50MHz clock from internal APLL output on GPIO16 - possibly an inverter is needed for LAN8720
+     ETH_CLOCK_GPIO17_OUT - 50MHz clock from internal APLL inverted output on GPIO17 - tested with LAN8720
 */
 #ifdef ETH_CLK_MODE
 #undef ETH_CLK_MODE
 #endif
-#define ETH_CLK_MODE    ETH_CLOCK_GPIO17_OUT
 
+/* 2. тактирование от GPIO17
+   этот вариант подойдет если у вас только ESP32 Devkit V1 ,
+   а кидать проводок на модуль на GPIO0 для реализации первого варианта как-то некрасиво.
+   в скетче указываем тактирование от GPIO17
+   аппаратно, также как и выше, кварц должен быть выключен , пин nINT/RETCLK должен быть
+   подключен к GPIO17 , а не к GPIO0 .  пин NC не используется.
+   Судя по коменту в скетче , этот вариант тестирован норм.
+
+*/
+#define ETH_CLK_MODE    ETH_CLOCK_GPIO17_OUT
 // Pin# of the enable signal for the external crystal oscillator (-1 to disable for internal APLL source)
 #define ETH_POWER_PIN   -1
 
@@ -58,18 +69,24 @@ I found that this workaround behaved differently on the two tested scenarios:
 
 
 static bool eth_connected = false;
+const char devices[] = "ESP32-LAN8720";
+const char my_host[] = "google.com";
+const uint16_t my_port = 80;
 
 void WiFiEvent(WiFiEvent_t event) {
   switch (event) {
-    case SYSTEM_EVENT_ETH_START:
+    //    case SYSTEM_EVENT_ETH_START:
+    case 18:
       Serial.println("ETH Started");
       //set eth hostname here
-      ETH.setHostname("esp32-ethernet");
+      ETH.setHostname(devices);
       break;
-    case SYSTEM_EVENT_ETH_CONNECTED:
+    //   case SYSTEM_EVENT_ETH_CONNECTED:
+    case 20:
       Serial.println("ETH Connected");
       break;
-    case SYSTEM_EVENT_ETH_GOT_IP:
+    //    case SYSTEM_EVENT_ETH_GOT_IP:
+    case 22:
       Serial.print("ETH MAC: ");
       Serial.print(ETH.macAddress());
       Serial.print(", IPv4: ");
@@ -83,6 +100,7 @@ void WiFiEvent(WiFiEvent_t event) {
       eth_connected = true;
       break;
     case SYSTEM_EVENT_ETH_DISCONNECTED:
+      //   case 21:
       Serial.println("ETH Disconnected");
       eth_connected = false;
       break;
@@ -118,14 +136,21 @@ void setup() {
   Serial.begin(115200);
   WiFi.onEvent(WiFiEvent);
   ETH.begin(ETH_ADDR, ETH_POWER_PIN, ETH_MDC_PIN, ETH_MDIO_PIN, ETH_TYPE, ETH_CLK_MODE);
+  if (!MDNS.begin(devices)) {
+    Serial.println("Error setting up MDNS responder!");
+    while (1) {
+      delay(1000);
+    }
+  }
 }
 
 
 void loop() {
   if (eth_connected) {
-    testClient("google.com", 80);
+    testClient(my_host, my_port);
   }
   delay(10000);
+
 }
 ```
 
