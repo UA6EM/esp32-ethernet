@@ -24,7 +24,7 @@ I found that this workaround behaved differently on the two tested scenarios:
 ### Arduino IDE
 
 ```c
-*
+/*
    проверяется под ядром 2.0.1
 
    This sketch shows how to configure different external
